@@ -56,8 +56,8 @@ func (p *LightningProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 				Optional:    true,
 			},
 			"project_id": schema.StringAttribute{
-				Description: "Lightning AI project/teamspace ID.",
-				Required:    true,
+				Description: "Lightning AI project/teamspace ID. Can be set via LIGHTNING_PROJECT_ID environment variable.",
+				Optional:    true,
 			},
 		},
 	}
@@ -81,7 +81,10 @@ func (p *LightningProvider) Configure(ctx context.Context, req provider.Configur
 		userID = config.UserID.ValueString()
 	}
 
-	projectID := config.ProjectID.ValueString()
+	projectID := os.Getenv("LIGHTNING_PROJECT_ID")
+	if !config.ProjectID.IsNull() && !config.ProjectID.IsUnknown() {
+		projectID = config.ProjectID.ValueString()
+	}
 
 	if apiKey == "" {
 		resp.Diagnostics.AddError(
@@ -94,6 +97,13 @@ func (p *LightningProvider) Configure(ctx context.Context, req provider.Configur
 		resp.Diagnostics.AddError(
 			"Missing User ID",
 			"The Lightning AI user ID must be set via the user_id provider attribute or the LIGHTNING_USER_ID environment variable.",
+		)
+	}
+
+	if projectID == "" {
+		resp.Diagnostics.AddError(
+			"Missing Project ID",
+			"The Lightning AI project ID must be set via the project_id provider attribute or the LIGHTNING_PROJECT_ID environment variable.",
 		)
 	}
 
