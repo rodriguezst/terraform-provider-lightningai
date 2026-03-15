@@ -12,6 +12,12 @@ import (
 
 const baseURL = "https://lightning.ai/v1"
 
+// Studio instance states returned by the API.
+const (
+	StateRunning = "CLOUD_SPACE_INSTANCE_STATE_RUNNING"
+	StateStopped = "CLOUD_SPACE_INSTANCE_STATE_STOPPED"
+)
+
 // Client is the Lightning AI API client.
 type Client struct {
 	apiKey     string
@@ -34,18 +40,46 @@ func NewClient(apiKey, userID, projectID string) *Client {
 
 // Studio represents a Lightning AI Studio (cloudspace).
 type Studio struct {
-	ID          string            `json:"id,omitempty"`
-	Name        string            `json:"name"`
-	ClusterID   string            `json:"cluster_id,omitempty"`
-	CodeStatus  *StudioCodeStatus `json:"-"`
+	ID         string            `json:"id,omitempty"`
+	Name       string            `json:"name"`
+	ClusterID  string            `json:"cluster_id,omitempty"`
+	CodeStatus *StudioCodeStatus `json:"-"`
 }
 
-// StudioCodeStatus represents the status of a studio.
+// StartupStatus represents the filesystem restore readiness of a studio.
+type StartupStatus struct {
+	InitialRestoreFinished bool `json:"initialRestoreFinished"`
+	TopUpRestoreFinished   bool `json:"topUpRestoreFinished"`
+}
+
+// StudioCodeStatus represents the status of a studio instance.
 type StudioCodeStatus struct {
-	Phase    string `json:"phase"`
-	PublicIP string `json:"public_ip,omitempty"`
-	SSHHost  string `json:"ssh_host,omitempty"`
-	SSHUsername string `json:"ssh_username,omitempty"`
+	Phase             string         `json:"phase"`
+	PublicIP          string         `json:"publicIpAddress,omitempty"`
+	SSHHost           string         `json:"sshHost,omitempty"`
+	SSHUsername       string         `json:"sshUsername,omitempty"`
+	StartupPercentage string         `json:"startupPercentage,omitempty"`
+	StartupStatus     *StartupStatus `json:"startupStatus,omitempty"`
+}
+
+// IsReady returns true when the studio is RUNNING and its filesystem restore
+// has completed (initialRestoreFinished == true). This is the safe point to
+// execute startup scripts that may depend on persisted user data.
+func (s *StudioCodeStatus) IsReady() bool {
+	if s.Phase != StateRunning {
+		return false
+	}
+	if s.StartupStatus == nil {
+		// If the API doesn't provide startupStatus, treat RUNNING as ready
+		// for backward compatibility.
+		return true
+	}
+	return s.StartupStatus.InitialRestoreFinished
+}
+
+// studioCodeStatusResponse is the top-level response from the codestatus API.
+type studioCodeStatusResponse struct {
+	InUse *StudioCodeStatus `json:"inUse,omitempty"`
 }
 
 // CreateStudioRequest is the request body for creating a studio.
@@ -53,11 +87,17 @@ type CreateStudioRequest struct {
 	Name string `json:"name"`
 }
 
+// startComputeConfig is the nested compute configuration for start requests.
+type startComputeConfig struct {
+	Name string `json:"name,omitempty"`
+	Spot bool   `json:"spot,omitempty"`
+}
+
 // StartStudioRequest is the request body for starting a studio.
+// The API expects machine type inside a nested computeConfig object.
 type StartStudioRequest struct {
-	MachineType   string `json:"machine_type,omitempty"`
-	Interruptible bool   `json:"interruptible,omitempty"`
-	ClusterID     string `json:"cluster_id,omitempty"`
+	ComputeConfig *startComputeConfig `json:"computeConfig,omitempty"`
+	ClusterID     string              `json:"cluster_id,omitempty"`
 }
 
 // ExecuteRequest is the request body for executing a command in a studio.
@@ -175,19 +215,26 @@ func (c *Client) GetStudioStatus(ctx context.Context, studioID string) (*StudioC
 		return nil, fmt.Errorf("get studio status failed (status %d): %s", resp.StatusCode, string(data))
 	}
 
-	var status StudioCodeStatus
-	if err := json.Unmarshal(data, &status); err != nil {
+	var envelope studioCodeStatusResponse
+	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, fmt.Errorf("failed to parse studio status response: %w", err)
 	}
-	return &status, nil
+	if envelope.InUse == nil {
+		// No running instance; treat as stopped.
+		return &StudioCodeStatus{Phase: StateStopped}, nil
+	}
+	return envelope.InUse, nil
 }
 
 // StartStudio starts a studio.
 func (c *Client) StartStudio(ctx context.Context, studioID, machineType string, interruptible bool) error {
 	path := fmt.Sprintf("/projects/%s/cloudspaces/%s/start", c.projectID, studioID)
-	reqBody := StartStudioRequest{
-		MachineType:   machineType,
-		Interruptible: interruptible,
+	reqBody := StartStudioRequest{}
+	if machineType != "" || interruptible {
+		reqBody.ComputeConfig = &startComputeConfig{
+			Name: machineType,
+			Spot: interruptible,
+		}
 	}
 
 	resp, err := c.doRequest(ctx, http.MethodPost, path, reqBody)

@@ -17,13 +17,13 @@ import (
 )
 
 const (
-	defaultStartupTimeout    = "10m"
-	pollInterval             = 2 * time.Second
-	defaultPollTimeout       = 10 * time.Minute
-	stateRunning             = "CLOUD_SPACE_INSTANCE_STATE_RUNNING"
-	stateStopped             = "CLOUD_SPACE_INSTANCE_STATE_STOPPED"
-	startupScriptModeOnce    = "once"
-	startupScriptModeAlways  = "always"
+	defaultStartupTimeout   = "10m"
+	pollInterval            = 2 * time.Second
+	defaultPollTimeout      = 10 * time.Minute
+	stateRunning            = client.StateRunning
+	stateStopped            = client.StateStopped
+	startupScriptModeOnce   = "once"
+	startupScriptModeAlways = "always"
 )
 
 var _ resource.Resource = &StudioResource{}
@@ -35,16 +35,16 @@ type StudioResource struct {
 
 // StudioResourceModel describes the resource data model.
 type StudioResourceModel struct {
-	ID                 types.String `tfsdk:"id"`
-	Name               types.String `tfsdk:"name"`
-	Machine            types.String `tfsdk:"machine"`
-	Running            types.Bool   `tfsdk:"running"`
-	Interruptible      types.Bool   `tfsdk:"interruptible"`
-	StartupScript      types.String `tfsdk:"startup_script"`
-	StartupScriptMode  types.String `tfsdk:"startup_script_mode"`
-	StartupTimeout     types.String `tfsdk:"startup_timeout"`
-	Status             types.String `tfsdk:"status"`
-	PublicIP           types.String `tfsdk:"public_ip"`
+	ID                types.String `tfsdk:"id"`
+	Name              types.String `tfsdk:"name"`
+	Machine           types.String `tfsdk:"machine"`
+	Running           types.Bool   `tfsdk:"running"`
+	Interruptible     types.Bool   `tfsdk:"interruptible"`
+	StartupScript     types.String `tfsdk:"startup_script"`
+	StartupScriptMode types.String `tfsdk:"startup_script_mode"`
+	StartupTimeout    types.String `tfsdk:"startup_timeout"`
+	Status            types.String `tfsdk:"status"`
+	PublicIP          types.String `tfsdk:"public_ip"`
 }
 
 // NewStudioResource returns a new studio resource.
@@ -172,6 +172,10 @@ func (r *StudioResource) Create(ctx context.Context, req resource.CreateRequest,
 		}
 
 		if !plan.StartupScript.IsNull() && !plan.StartupScript.IsUnknown() && plan.StartupScript.ValueString() != "" {
+			if err := r.waitForReady(ctx, studio.ID, defaultPollTimeout); err != nil {
+				resp.Diagnostics.AddError("Error Waiting for Studio to Become Ready", err.Error())
+				return
+			}
 			if err := r.executeStartupScript(ctx, studio.ID, plan); err != nil {
 				resp.Diagnostics.AddError("Error Executing Startup Script", err.Error())
 				return
@@ -247,6 +251,10 @@ func (r *StudioResource) Update(ctx context.Context, req resource.UpdateRequest,
 		if !plan.StartupScript.IsNull() && !plan.StartupScript.IsUnknown() && plan.StartupScript.ValueString() != "" {
 			mode := plan.StartupScriptMode.ValueString()
 			if mode == startupScriptModeAlways {
+				if err := r.waitForReady(ctx, studioID, defaultPollTimeout); err != nil {
+					resp.Diagnostics.AddError("Error Waiting for Studio to Become Ready", err.Error())
+					return
+				}
 				if err := r.executeStartupScript(ctx, studioID, plan); err != nil {
 					resp.Diagnostics.AddError("Error Executing Startup Script", err.Error())
 					return
@@ -303,7 +311,7 @@ func (r *StudioResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 }
 
-// waitForStatus polls until the studio reaches the desired status or the timeout is reached.
+// waitForStatus polls until the studio reaches the desired phase or the timeout is reached.
 func (r *StudioResource) waitForStatus(ctx context.Context, studioID, desiredStatus string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
@@ -323,6 +331,40 @@ func (r *StudioResource) waitForStatus(ctx context.Context, studioID, desiredSta
 		})
 
 		if status.Phase == desiredStatus {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(pollInterval):
+		}
+	}
+}
+
+// waitForReady polls until the studio is fully ready (RUNNING + filesystem
+// restore complete). This should be called before executing startup scripts
+// to ensure persisted user data is available.
+func (r *StudioResource) waitForReady(ctx context.Context, studioID string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for studio %s to become ready", studioID)
+		}
+
+		status, err := r.client.GetStudioStatus(ctx, studioID)
+		if err != nil {
+			return fmt.Errorf("error polling studio readiness: %w", err)
+		}
+
+		tflog.Debug(ctx, "Polling studio readiness", map[string]interface{}{
+			"id":                     studioID,
+			"phase":                  status.Phase,
+			"startupPercentage":      status.StartupPercentage,
+			"initialRestoreFinished": status.StartupStatus != nil && status.StartupStatus.InitialRestoreFinished,
+		})
+
+		if status.IsReady() {
 			return nil
 		}
 
@@ -365,7 +407,8 @@ func (r *StudioResource) executeStartupScript(ctx context.Context, studioID stri
 	return nil
 }
 
-// refreshStatus updates the status and public IP fields in the model.
+// refreshStatus updates the status, running, and public IP fields in the model
+// based on the actual state from the API, enabling drift detection.
 func (r *StudioResource) refreshStatus(ctx context.Context, model *StudioResourceModel) error {
 	status, err := r.client.GetStudioStatus(ctx, model.ID.ValueString())
 	if err != nil {
@@ -373,6 +416,8 @@ func (r *StudioResource) refreshStatus(ctx context.Context, model *StudioResourc
 	}
 
 	model.Status = types.StringValue(status.Phase)
+	model.Running = types.BoolValue(status.Phase == stateRunning)
+
 	if status.PublicIP != "" {
 		model.PublicIP = types.StringValue(status.PublicIP)
 	} else {
