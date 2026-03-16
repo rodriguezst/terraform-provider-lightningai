@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
@@ -86,24 +88,52 @@ func (p *LightningProvider) Configure(ctx context.Context, req provider.Configur
 		projectID = config.ProjectID.ValueString()
 	}
 
+	// Validate API key
 	if apiKey == "" {
 		resp.Diagnostics.AddError(
 			"Missing API Key",
 			"The Lightning AI API key must be set via the api_key provider attribute or the LIGHTNING_API_KEY environment variable.",
 		)
+	} else if strings.TrimSpace(apiKey) == "" {
+		resp.Diagnostics.AddError(
+			"Invalid API Key",
+			"The Lightning AI API key cannot be empty or contain only whitespace.",
+		)
 	}
 
+	// Validate user ID format (UUID-like or alphanumeric)
 	if userID == "" {
 		resp.Diagnostics.AddError(
 			"Missing User ID",
 			"The Lightning AI user ID must be set via the user_id provider attribute or the LIGHTNING_USER_ID environment variable.",
 		)
+	} else if strings.TrimSpace(userID) == "" {
+		resp.Diagnostics.AddError(
+			"Invalid User ID",
+			"The Lightning AI user ID cannot be empty or contain only whitespace.",
+		)
+	} else if !isValidID(userID) {
+		resp.Diagnostics.AddError(
+			"Invalid User ID",
+			"The Lightning AI user ID must contain only alphanumeric characters, hyphens, and underscores.",
+		)
 	}
 
+	// Validate project ID format (UUID-like or alphanumeric)
 	if projectID == "" {
 		resp.Diagnostics.AddError(
 			"Missing Project ID",
 			"The Lightning AI project ID must be set via the project_id provider attribute or the LIGHTNING_PROJECT_ID environment variable.",
+		)
+	} else if strings.TrimSpace(projectID) == "" {
+		resp.Diagnostics.AddError(
+			"Invalid Project ID",
+			"The Lightning AI project ID cannot be empty or contain only whitespace.",
+		)
+	} else if !isValidID(projectID) {
+		resp.Diagnostics.AddError(
+			"Invalid Project ID",
+			"The Lightning AI project ID must contain only alphanumeric characters, hyphens, and underscores.",
 		)
 	}
 
@@ -114,6 +144,13 @@ func (p *LightningProvider) Configure(ctx context.Context, req provider.Configur
 	c := client.NewClient(apiKey, userID, projectID)
 	resp.DataSourceData = c
 	resp.ResourceData = c
+}
+
+// isValidID checks if an ID contains only safe characters (alphanumeric, hyphens, underscores)
+func isValidID(id string) bool {
+	// Allow alphanumeric characters, hyphens, and underscores (typical for UUIDs and IDs)
+	validIDPattern := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	return validIDPattern.MatchString(id)
 }
 
 func (p *LightningProvider) Resources(_ context.Context) []func() resource.Resource {

@@ -2,6 +2,9 @@ package provider
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -158,6 +161,26 @@ func (r *StudioResource) Create(ctx context.Context, req resource.CreateRequest,
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Validate startup_script_mode
+	mode := plan.StartupScriptMode.ValueString()
+	if mode != startupScriptModeOnce && mode != startupScriptModeAlways {
+		resp.Diagnostics.AddError(
+			"Invalid Startup Script Mode",
+			fmt.Sprintf("startup_script_mode must be either '%s' or '%s', got: %s", startupScriptModeOnce, startupScriptModeAlways, mode),
+		)
+		return
+	}
+
+	// Validate startup_timeout format
+	timeoutStr := plan.StartupTimeout.ValueString()
+	if _, err := time.ParseDuration(timeoutStr); err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid Startup Timeout",
+			fmt.Sprintf("startup_timeout must be a valid duration string (e.g., '10m', '30m'), got: %s - error: %s", timeoutStr, err.Error()),
+		)
 		return
 	}
 
@@ -427,6 +450,7 @@ func (r *StudioResource) waitForReady(ctx context.Context, studioID string, time
 }
 
 // executeStartupScript wraps and executes the startup script in the studio.
+// Uses base64 encoding to safely transfer the script content without shell injection risks.
 func (r *StudioResource) executeStartupScript(ctx context.Context, studioID string, plan StudioResourceModel) error {
 	script := plan.StartupScript.ValueString()
 	timeoutStr := plan.StartupTimeout.ValueString()
@@ -439,7 +463,21 @@ func (r *StudioResource) executeStartupScript(ctx context.Context, studioID stri
 		}
 	}
 
-	command := fmt.Sprintf("cat <<'EOF' > /tmp/lightning-startup.sh\n%s\nEOF\nbash /tmp/lightning-startup.sh", script)
+	// Base64 encode the script to prevent shell injection and handle special characters
+	encodedScript := base64.StdEncoding.EncodeToString([]byte(script))
+
+	// Use a unique temporary filename to avoid race conditions
+	randBytes := make([]byte, 8)
+	if _, err := rand.Read(randBytes); err != nil {
+		return fmt.Errorf("failed to generate random filename: %w", err)
+	}
+	tmpFile := fmt.Sprintf("/tmp/lightning-startup-%s.sh", hex.EncodeToString(randBytes))
+
+	// Decode and execute the script, then clean up
+	command := fmt.Sprintf(
+		"echo '%s' | base64 -d > '%s' && chmod +x '%s' && bash '%s'; EXIT_CODE=$?; rm -f '%s'; exit $EXIT_CODE",
+		encodedScript, tmpFile, tmpFile, tmpFile, tmpFile,
+	)
 
 	execCtx, cancel := context.WithTimeout(ctx, scriptTimeout)
 	defer cancel()
