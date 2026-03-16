@@ -26,6 +26,22 @@ const (
 	startupScriptModeAlways = "always"
 )
 
+// humanPhase returns a short, user-friendly label for an API phase string.
+func humanPhase(phase string) string {
+	switch phase {
+	case stateRunning:
+		return "running"
+	case stateStopped:
+		return "stopped"
+	case "CLOUD_SPACE_INSTANCE_STATE_PENDING":
+		return "pending"
+	case "CLOUD_SPACE_INSTANCE_STATE_STOPPING":
+		return "stopping"
+	default:
+		return phase
+	}
+}
+
 var _ resource.Resource = &StudioResource{}
 
 // StudioResource defines the resource implementation.
@@ -145,7 +161,7 @@ func (r *StudioResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	tflog.Debug(ctx, "Creating Lightning AI Studio", map[string]interface{}{"name": plan.Name.ValueString()})
+	tflog.Info(ctx, "Creating Lightning AI Studio", map[string]interface{}{"name": plan.Name.ValueString()})
 
 	studio, err := r.client.CreateStudio(ctx, plan.Name.ValueString())
 	if err != nil {
@@ -160,7 +176,10 @@ func (r *StudioResource) Create(ctx context.Context, req resource.CreateRequest,
 		machineType := plan.Machine.ValueString()
 		interruptible := plan.Interruptible.ValueBool()
 
-		tflog.Debug(ctx, "Starting studio", map[string]interface{}{"id": studio.ID, "machine": machineType})
+		tflog.Info(ctx, "Starting studio", map[string]interface{}{
+			"id":      studio.ID,
+			"machine": machineType,
+		})
 		if err := r.client.StartStudio(ctx, studio.ID, machineType, interruptible); err != nil {
 			resp.Diagnostics.AddError("Error Starting Studio", err.Error())
 			return
@@ -237,7 +256,10 @@ func (r *StudioResource) Update(ctx context.Context, req resource.UpdateRequest,
 		machineType := plan.Machine.ValueString()
 		interruptible := plan.Interruptible.ValueBool()
 
-		tflog.Debug(ctx, "Starting studio", map[string]interface{}{"id": studioID})
+		tflog.Info(ctx, "Starting studio", map[string]interface{}{
+			"id":      studioID,
+			"machine": machineType,
+		})
 		if err := r.client.StartStudio(ctx, studioID, machineType, interruptible); err != nil {
 			resp.Diagnostics.AddError("Error Starting Studio", err.Error())
 			return
@@ -262,7 +284,7 @@ func (r *StudioResource) Update(ctx context.Context, req resource.UpdateRequest,
 			}
 		}
 	} else if !plan.Running.ValueBool() && currentlyRunning {
-		tflog.Debug(ctx, "Stopping studio", map[string]interface{}{"id": studioID})
+		tflog.Info(ctx, "Stopping studio", map[string]interface{}{"id": studioID})
 		if err := r.client.StopStudio(ctx, studioID); err != nil {
 			resp.Diagnostics.AddError("Error Stopping Studio", err.Error())
 			return
@@ -292,9 +314,10 @@ func (r *StudioResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 
 	studioID := state.ID.ValueString()
-	tflog.Debug(ctx, "Deleting studio", map[string]interface{}{"id": studioID})
+	tflog.Info(ctx, "Deleting studio", map[string]interface{}{"id": studioID})
 
 	if state.Status.ValueString() == stateRunning {
+		tflog.Info(ctx, "Studio is running, stopping before delete", map[string]interface{}{"id": studioID})
 		if err := r.client.StopStudio(ctx, studioID); err != nil {
 			resp.Diagnostics.AddError("Error Stopping Studio Before Delete", err.Error())
 			return
@@ -314,6 +337,7 @@ func (r *StudioResource) Delete(ctx context.Context, req resource.DeleteRequest,
 // waitForStatus polls until the studio reaches the desired phase or the timeout is reached.
 func (r *StudioResource) waitForStatus(ctx context.Context, studioID, desiredStatus string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	lastPhase := ""
 	for {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timed out waiting for studio %s to reach status %s", studioID, desiredStatus)
@@ -329,6 +353,14 @@ func (r *StudioResource) waitForStatus(ctx context.Context, studioID, desiredSta
 			"status": status.Phase,
 			"want":   desiredStatus,
 		})
+
+		// Log phase transitions so the user can see progress.
+		if status.Phase != lastPhase {
+			tflog.Info(ctx, fmt.Sprintf("Studio status: %s", humanPhase(status.Phase)), map[string]interface{}{
+				"id": studioID,
+			})
+			lastPhase = status.Phase
+		}
 
 		if status.Phase == desiredStatus {
 			return nil
@@ -347,6 +379,7 @@ func (r *StudioResource) waitForStatus(ctx context.Context, studioID, desiredSta
 // to ensure persisted user data is available.
 func (r *StudioResource) waitForReady(ctx context.Context, studioID string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	lastPct := ""
 	for {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timed out waiting for studio %s to become ready", studioID)
@@ -357,12 +390,29 @@ func (r *StudioResource) waitForReady(ctx context.Context, studioID string, time
 			return fmt.Errorf("error polling studio readiness: %w", err)
 		}
 
+		initialDone := status.StartupStatus != nil && status.StartupStatus.InitialRestoreFinished
+
 		tflog.Debug(ctx, "Polling studio readiness", map[string]interface{}{
 			"id":                     studioID,
 			"phase":                  status.Phase,
 			"startupPercentage":      status.StartupPercentage,
-			"initialRestoreFinished": status.StartupStatus != nil && status.StartupStatus.InitialRestoreFinished,
+			"initialRestoreFinished": initialDone,
 		})
+
+		// Log percentage changes so the user can see filesystem restore progress.
+		pct := status.StartupPercentage
+		if pct != lastPct && pct != "" {
+			if initialDone {
+				tflog.Info(ctx, "Studio ready (filesystem restore complete)", map[string]interface{}{
+					"id": studioID,
+				})
+			} else {
+				tflog.Info(ctx, fmt.Sprintf("Studio starting up... %s%%", pct), map[string]interface{}{
+					"id": studioID,
+				})
+			}
+			lastPct = pct
+		}
 
 		if status.IsReady() {
 			return nil
@@ -394,7 +444,9 @@ func (r *StudioResource) executeStartupScript(ctx context.Context, studioID stri
 	execCtx, cancel := context.WithTimeout(ctx, scriptTimeout)
 	defer cancel()
 
-	tflog.Debug(ctx, "Executing startup script", map[string]interface{}{"studio_id": studioID})
+	tflog.Info(ctx, fmt.Sprintf("Executing startup script (timeout: %s)", timeoutStr), map[string]interface{}{
+		"id": studioID,
+	})
 	result, err := r.client.ExecuteCommand(execCtx, studioID, command)
 	if err != nil {
 		return fmt.Errorf("startup script execution failed: %w", err)
@@ -404,6 +456,9 @@ func (r *StudioResource) executeStartupScript(ctx context.Context, studioID stri
 		return fmt.Errorf("startup script exited with code %d: %s", result.ExitCode, result.Output)
 	}
 
+	tflog.Info(ctx, "Startup script completed successfully", map[string]interface{}{
+		"id": studioID,
+	})
 	return nil
 }
 
