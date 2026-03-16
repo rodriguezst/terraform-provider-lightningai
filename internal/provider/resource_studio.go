@@ -171,6 +171,14 @@ func (r *StudioResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	plan.ID = types.StringValue(studio.ID)
 	plan.Status = types.StringValue("")
+	plan.PublicIP = types.StringValue("")
+
+	// Save state immediately so the studio can be destroyed even if later steps fail.
+	diags = resp.State.Set(ctx, plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	if plan.Running.ValueBool() {
 		machineType := plan.Machine.ValueString()
@@ -439,7 +447,7 @@ func (r *StudioResource) executeStartupScript(ctx context.Context, studioID stri
 		}
 	}
 
-	command := fmt.Sprintf("cat <<'EOF' > /tmp/lightning-startup.sh\n%s\nEOF\nbash /tmp/lightning-startup.sh", script)
+	command := script
 
 	execCtx, cancel := context.WithTimeout(ctx, scriptTimeout)
 	defer cancel()

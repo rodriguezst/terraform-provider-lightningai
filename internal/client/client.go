@@ -108,7 +108,7 @@ type ExecuteRequest struct {
 // ExecuteResponse is the response body from executing a command.
 type ExecuteResponse struct {
 	Output   string `json:"output,omitempty"`
-	ExitCode int    `json:"exit_code,omitempty"`
+	ExitCode int    `json:"exitCode,omitempty"`
 }
 
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
