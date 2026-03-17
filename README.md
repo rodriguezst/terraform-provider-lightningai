@@ -2,6 +2,8 @@
 
 Terraform provider for managing [Lightning AI](https://lightning.ai) Studios.
 
+Available on the [Terraform Registry](https://registry.terraform.io/providers/rodriguezst/lightningai).
+
 ## Features
 
 - Create, start, stop, and delete Lightning AI Studios
@@ -13,35 +15,24 @@ Terraform provider for managing [Lightning AI](https://lightning.ai) Studios.
 
 ## Requirements
 
-- [Go](https://golang.org/) 1.21+
 - [Terraform](https://www.terraform.io/) 1.0+
 
-## Building
+## Installation
 
-```sh
-go build -o terraform-provider-lightning .
-```
-
-## Development Setup
-
-For local development, configure Terraform to use your locally-built binary by creating a `~/.terraformrc` file:
+Add the provider to your Terraform configuration:
 
 ```hcl
-provider_installation {
-  dev_overrides {
-    "lightningai/lightning" = "/path/to/terraform-provider-lightningai"
+terraform {
+  required_providers {
+    lightning = {
+      source  = "rodriguezst/lightningai"
+      version = "~> 1.0"
+    }
   }
-  direct {}
 }
 ```
 
-Then build the provider:
-
-```sh
-go build -o terraform-provider-lightning .
-```
-
-No `terraform init` is needed when using `dev_overrides`.
+Then run `terraform init`.
 
 ## Usage
 
@@ -142,3 +133,62 @@ resource "lightning_studio" "workspace" {
 When Coder starts a workspace, `start_count > 0` evaluates to `true` and the studio starts. When Coder stops a workspace, it evaluates to `false` and the studio stops. On workspace deletion, `terraform destroy` removes the studio entirely.
 
 See [examples/coder-template](examples/coder-template/) for a complete example.
+
+## Development
+
+### Requirements
+
+- [Go](https://golang.org/) 1.21+
+- [Terraform](https://www.terraform.io/) 1.0+
+
+### Building
+
+```sh
+make build
+```
+
+### Local Development Setup
+
+For local development, configure Terraform to use your locally-built binary by creating a `~/.terraformrc` file:
+
+```hcl
+provider_installation {
+  dev_overrides {
+    "rodriguezst/lightningai" = "/path/to/terraform-provider-lightningai"
+  }
+  direct {}
+}
+```
+
+Then build the provider:
+
+```sh
+make build
+```
+
+No `terraform init` is needed when using `dev_overrides`.
+
+### Generating Documentation
+
+```sh
+make generate
+```
+
+### Running Tests
+
+```sh
+make test
+```
+
+## Releasing
+
+Releases are automated via GitHub Actions. To create a new release:
+
+1. Ensure you have a GPG signing key configured in the repository secrets (`GPG_PRIVATE_KEY` and `PASSPHRASE`).
+2. Ensure the same GPG public key is added to your [Terraform Registry signing keys](https://registry.terraform.io/settings/gpg-keys).
+3. Tag a new version:
+   ```sh
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+4. The GitHub Actions workflow will build, sign, and publish the release automatically.

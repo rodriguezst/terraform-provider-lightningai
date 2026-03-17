@@ -2,6 +2,9 @@
 terraform-provider-lightningai
 terraform-provider-lightningai.exe
 
+# GoReleaser
+dist/
+
 # Terraform
 **/.terraform/
 **/.terraform.lock.hcl

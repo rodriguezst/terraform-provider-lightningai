@@ -18,7 +18,7 @@
 terraform {
   required_providers {
     lightning = {
-      source = "lightningai/lightning"
+      source = "rodriguezst/lightningai"
     }
   }
 }

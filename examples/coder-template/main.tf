@@ -5,7 +5,7 @@ terraform {
       version = "~> 0.12"
     }
     lightning = {
-      source  = "lightningai/lightning"
+      source  = "rodriguezst/lightningai"
       version = "~> 1.0"
     }
   }

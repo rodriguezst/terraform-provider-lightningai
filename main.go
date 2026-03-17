@@ -9,7 +9,10 @@ import (
 	"github.com/rodriguezst/terraform-provider-lightningai/internal/provider"
 )
 
+// version is set via ldflags at build time by GoReleaser.
 var version string = "dev"
+
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-name lightningai
 
 func main() {
 	var debug bool
@@ -18,7 +21,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/lightningai/lightning",
+		Address: "registry.terraform.io/rodriguezst/lightningai",
 		Debug:   debug,
 	}
 
