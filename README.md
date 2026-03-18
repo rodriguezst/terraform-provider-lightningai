@@ -1,4 +1,6 @@
-# terraform-provider-lightningai
+# Lightning AI Terraform Provider
+
+> **⚠️ Disclaimer**: This Terraform provider is **unofficial** and **not affiliated with, endorsed by, or connected to Lightning AI** in any way. It is provided **without any warranty** of any kind, express or implied. The authors and contributors are **not responsible** for any damages, costs, or issues arising from its use, including but not limited to unexpected charges (e.g., machines not powering off properly, leaving compute running unintentionally, etc.). Use this provider at your own risk.
 
 Terraform provider for managing [Lightning AI](https://lightning.ai) Studios.
 

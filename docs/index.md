@@ -5,6 +5,8 @@ description: "The Lightning AI provider manages Lightning AI Studios. Use it to 
 
 # Lightning AI Provider
 
+> **⚠️ Disclaimer**: This Terraform provider is **unofficial** and **not affiliated with, endorsed by, or connected to Lightning AI** in any way. It is provided **without any warranty** of any kind, express or implied. The authors and contributors are **not responsible** for any damages, costs, or issues arising from its use, including but not limited to unexpected charges (e.g., machines not powering off properly, leaving compute running unintentionally, etc.). Use this provider at your own risk.
+
 The Lightning AI provider allows you to manage [Lightning AI](https://lightning.ai) Studios
 as Terraform resources. Use it to create, start, stop, and delete studios, execute startup
 scripts, and integrate with platforms like [Coder](https://coder.com/).

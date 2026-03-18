@@ -4,8 +4,8 @@ build:
 	go build -o terraform-provider-lightningai .
 
 install: build
-	mkdir -p ~/.terraform.d/plugins/rodriguezst/lightningai/1.0.0/$$(go env GOOS)_$$(go env GOARCH)/
-	cp terraform-provider-lightningai ~/.terraform.d/plugins/rodriguezst/lightningai/1.0.0/$$(go env GOOS)_$$(go env GOARCH)/
+	mkdir -p ~/.terraform.d/plugins/rodriguezst/lightningai/1.0.1/$$(go env GOOS)_$$(go env GOARCH)/
+	cp terraform-provider-lightningai ~/.terraform.d/plugins/rodriguezst/lightningai/1.0.1/$$(go env GOOS)_$$(go env GOARCH)/
 
 test:
 	go test ./...
