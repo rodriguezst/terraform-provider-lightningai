@@ -16,7 +16,6 @@ This template creates a Lightning AI Studio as a [Coder](https://coder.com) work
 - When the Coder workspace starts (`start_count > 0`), the Lightning AI Studio is started.
 - On the first start the `startup_script` (bootstrap.sh) is executed once inside the studio.
 - When the workspace is stopped, the studio is stopped accordingly.
-- Changing `startup_script` triggers a full studio replacement (immutable design).
 
 ## Machine Types
 

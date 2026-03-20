@@ -87,7 +87,7 @@ executing startup scripts. This ensures that persisted user data in
 - `machine` (String) Machine type used when starting the studio (e.g., `cpu-4`, `lit-l4-1`).
 - `running` (Boolean) Desired runtime state of the studio. Defaults to `true`.
 - `interruptible` (Boolean) Use spot/preemptible compute. Defaults to `false`.
-- `startup_script` (String) Multiline script executed after studio start. Changes trigger resource replacement.
+- `startup_script` (String) Multiline script executed after studio start. Changes are updated in-place without replacing the studio.
 - `startup_script_mode` (String) When to run the startup script: `once` (only at creation) or `always` (every start). Defaults to `once`.
 - `startup_timeout` (String) Maximum time to wait for startup script execution (e.g., `10m`, `30m`). Defaults to `10m`.
 - `public_ip` (String) Public IP address of the studio, if available.

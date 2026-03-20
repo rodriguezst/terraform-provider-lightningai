@@ -17,7 +17,6 @@ scripts, and integrate with platforms like [Coder](https://coder.com/).
 - Execute startup scripts after studio creation or on every start
 - Wait for full studio readiness (filesystem restore) before running startup scripts
 - Drift detection: sync `running` state with actual studio status
-- Immutable design: startup script changes trigger studio replacement
 
 ## Example Usage
 

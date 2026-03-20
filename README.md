@@ -12,7 +12,6 @@ Available on the [Terraform Registry](https://registry.terraform.io/providers/ro
 - Execute startup scripts after studio creation or on every start
 - Waits for full studio readiness (filesystem restore) before running startup scripts
 - Drift detection: syncs `running` state with actual studio status
-- Immutable design: startup script changes trigger studio replacement
 - Coder workspace integration support
 
 ## Requirements
@@ -80,7 +79,7 @@ resource "lightning_studio" "example" {
 | `machine`            | string | No       | Machine type (used when starting studio)                       |
 | `running`            | bool   | No       | Desired runtime state (default: `true`)                        |
 | `interruptible`      | bool   | No       | Use spot/preemptible compute (default: `false`)                |
-| `startup_script`     | string | No       | Script executed after studio starts. Changes force replacement |
+| `startup_script`     | string | No       | Script executed after studio starts. Changes are updated in-place |
 | `startup_script_mode`| string | No       | `once` or `always` (default: `once`)                           |
 | `startup_timeout`    | string | No       | Max time for script execution (default: `10m`)                 |
 | `id`                 | string | Computed | Studio unique identifier                                       |
