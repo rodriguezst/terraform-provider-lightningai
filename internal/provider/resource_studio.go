@@ -107,11 +107,8 @@ func (r *StudioResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Default:     booldefault.StaticBool(false),
 			},
 			"startup_script": schema.StringAttribute{
-				Description: "Multiline script executed after studio start. Changes trigger resource replacement.",
+				Description: "Multiline script executed after studio start.",
 				Optional:    true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"startup_script_mode": schema.StringAttribute{
 				Description: "When to run the startup script: 'once' (only at creation) or 'always' (every start). Defaults to 'once'.",
